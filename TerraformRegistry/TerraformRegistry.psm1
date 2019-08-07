@@ -1,4 +1,5 @@
 function Connect-TerraformRegistry {
+    [CmdletBinding()]
     param (
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -31,18 +32,25 @@ function Connect-TerraformRegistry {
 }
 
 function Get-TerraformModule {
+    [CmdletBinding(DefaultParameterSetName = 'list')]
     param (
-        [Parameter()]
+        [Parameter(ParameterSetName = 'list')]
+        [Parameter(Mandatory, ParameterSetName = 'named')]
         [ValidateNotNullOrEmpty()]
         [string] $NameSpace,
 
-        [Parameter()]
+        [Parameter(ParameterSetName = 'list')]
+        [Parameter(Mandatory, ParameterSetName = 'named')]
         [ValidateNotNullOrEmpty()]
         [string] $Provider,
 
-        [Parameter()]
+        [Parameter(Mandatory, ParameterSetName = 'named')]
         [ValidateNotNullOrEmpty()]
-        [string] $Name
+        [string] $Name,
+
+        [Parameter(ParameterSetName = 'named')]
+        [ValidateNotNullOrEmpty()]
+        [string] $Version
     )
 
     if ($null -eq $script:tfurl) {
@@ -52,12 +60,20 @@ function Get-TerraformModule {
 
     $baseUri = $script:tfurl
 
-    if ($PSBoundParameters.ContainsKey('NameSpace')) {
-        $baseUri = $baseUri, '/', $NameSpace -join ''
-    }
+    if ($PSCmdlet.ParameterSetName -eq 'list') {
+        if ($PSBoundParameters.ContainsKey('NameSpace')) {
+            $baseUri = $baseUri, $NameSpace -join '/'
+        }
 
-    if ($PSBoundParameters.ContainsKey('Provider')) {
-        $baseUri = $baseUri, '?provider=', $Provider -join ''
+        if ($PSBoundParameters.ContainsKey('Provider')) {
+            $baseUri = $baseUri, '?provider=', $Provider -join ''
+        }
+    } else {
+        $baseUri = $baseUri, $NameSpace, $Name, $Provider -join '/'
+
+        if ($PSBoundParameters.ContainsKey('Version')) {
+            $baseUri = $baseUri, $Version -join '/'
+        }
     }
 
     $irmArgs = @{
@@ -67,23 +83,43 @@ function Get-TerraformModule {
 
     if ($null -ne $script:token) {
         [void] $irmArgs.Add('Headers', @{
-            Authorization = $script:token
-        })
+                Authorization = $script:token
+            })
     }
 
-    $result = Invoke-RestMethod @irmArgs
-    $result.modules | ForEach-Object -Process {
-        if ($PSBoundParameters.ContainsKey('Name') -and $_.name -ne $Name) {
-            return
+    if ($PSCmdlet.ParameterSetName -eq 'list') {
+        $result = Invoke-RestMethod @irmArgs
+        $modules = $result.modules
+
+        while ($null -ne ($result.meta | Get-Member -MemberType NoteProperty -Name next_url)) {
+
+            $nextQuery = ($result.meta.next_url -split '\?')[-1]
+            $rootUrl, $oldQuery = $irmArgs.Uri -split '\?'
+            if ($oldQuery -eq $nextQuery) {
+                # we've hit a bug in api with regard to pagination where the offset is not incremented over 115
+                break
+            }
+            $irmArgs.Uri = $rootUrl, $nextQuery -join '?'
+            $result = Invoke-RestMethod @irmArgs
+            $modules += $result.modules
         }
-        $_
+
+        $modules | ForEach-Object -Process {
+            [void] $_.PSObject.TypeNames.Insert(0, 'TFModule')
+            $_
+        }
+    } else {
+        $result = Invoke-RestMethod @irmArgs
+        [void] $result.PSObject.TypeNames.Insert(0, 'TFModule')
+        $result
     }
 }
 
 function Get-TerraformModuleVersion {
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory, ValueFromPipeline)]
-        [pscustomobject] $Module
+        [PSTypeName('TFModule')] $Module
     )
 
     begin {
@@ -102,8 +138,8 @@ function Get-TerraformModuleVersion {
 
         if ($null -ne $script:token) {
             [void] $irmArgs.Add('Headers', @{
-                Authorization = $script:token
-            })
+                    Authorization = $script:token
+                })
         }
 
         $result = Invoke-RestMethod @irmArgs
@@ -117,7 +153,9 @@ function Get-TerraformModuleVersion {
 function Get-TerraformModuleDownloadLink {
     param (
         [Parameter(Mandatory, ValueFromPipeline)]
-        [pscustomobject] $Module
+        [PSTypeName('TFModule')] $Module,
+
+        [switch] $Latest
     )
 
     begin {
@@ -127,7 +165,11 @@ function Get-TerraformModuleDownloadLink {
         }
     }
     process {
-        $baseUri = '{0}/{1}/{2}/{3}/download' -f $script:tfurl, $Module.namespace, $Module.name, $Module.provider
+        if ($Latest) {
+            $baseUri = '{0}/{1}/{2}/{3}/download' -f $script:tfurl, $Module.namespace, $Module.name, $Module.provider
+        } else {
+            $baseUri = '{0}/{1}/{2}/{3}/{4}/download' -f $script:tfurl, $Module.namespace, $Module.name, $Module.provider, $Module.version
+        }
 
         $iwrArgs = @{
             Uri = $baseUri
@@ -136,8 +178,8 @@ function Get-TerraformModuleDownloadLink {
 
         if ($null -ne $script:token) {
             [void] $iwrArgs.Add('Headers', @{
-                Authorization = $script:token
-            })
+                    Authorization = $script:token
+                })
         }
 
         $result = Invoke-WebRequest @iwrArgs

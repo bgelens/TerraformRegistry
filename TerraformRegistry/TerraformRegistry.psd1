@@ -12,7 +12,7 @@
 RootModule = 'TerraformRegistry.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.1.0'
+ModuleVersion = '0.2.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -115,7 +115,11 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'Initial version'
+        ReleaseNotes = 'Implemented more REST route possibilities:
+* fetch module info based on both list and explicit routes depending on provided arguments
+* handle pagination (note there is a bug in the api where offset will not increase over 115)
+* added TFModule type info and adjusted bindings for get versions and get download functions
+* fetch download link of provided module version or latest with latest switch'
 
     } # End of PSData hashtable
 
