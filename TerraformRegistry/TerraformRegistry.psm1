@@ -91,7 +91,7 @@ function Get-TerraformModule {
         $result = Invoke-RestMethod @irmArgs
         $modules = $result.modules
 
-        while ($null -ne ($result.meta | Get-Member -MemberType NoteProperty -Name next_url)) {
+        while ($null -ne ($result.meta | Get-Member -MemberType NoteProperty -Name next_url -ErrorAction SilentlyContinue)) {
 
             $nextQuery = ($result.meta.next_url -split '\?')[-1]
             $rootUrl, $oldQuery = $irmArgs.Uri -split '\?'
