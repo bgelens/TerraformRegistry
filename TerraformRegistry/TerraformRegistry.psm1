@@ -22,8 +22,10 @@ function Connect-TerraformRegistry {
             if ($BearerToken -notmatch "^Bearer/s.*$") {
                 $BearerToken = ('Bearer {0}' -f $BearerToken)
             }
-    
+
             $script:token = $BearerToken
+        } else {
+            $script:token = $null
         }
     } catch {
         $script:tfurl = $null
@@ -79,6 +81,7 @@ function Get-TerraformModule {
     $irmArgs = @{
         Uri = $baseUri
         UseBasicParsing = $true
+        ErrorAction = 'Stop'
     }
 
     if ($null -ne $script:token) {
@@ -88,7 +91,12 @@ function Get-TerraformModule {
     }
 
     if ($PSCmdlet.ParameterSetName -eq 'list') {
-        $result = Invoke-RestMethod @irmArgs
+        try {
+            $result = Invoke-RestMethod @irmArgs
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+
         $modules = $result.modules
 
         while ($null -ne ($result.meta | Get-Member -MemberType NoteProperty -Name next_url -ErrorAction SilentlyContinue)) {
@@ -100,7 +108,13 @@ function Get-TerraformModule {
                 break
             }
             $irmArgs.Uri = $rootUrl, $nextQuery -join '?'
-            $result = Invoke-RestMethod @irmArgs
+
+            try {
+                $result = Invoke-RestMethod @irmArgs
+            } catch {
+                $PSCmdlet.ThrowTerminatingError($_)
+            }
+
             $modules += $result.modules
         }
 
@@ -109,7 +123,11 @@ function Get-TerraformModule {
             $_
         }
     } else {
-        $result = Invoke-RestMethod @irmArgs
+        try {
+            $result = Invoke-RestMethod @irmArgs
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
         [void] $result.PSObject.TypeNames.Insert(0, 'TFModule')
         $result
     }
@@ -134,6 +152,7 @@ function Get-TerraformModuleVersion {
         $irmArgs = @{
             Uri = $baseUri
             UseBasicParsing = $true
+            ErrorAction = 'Stop'
         }
 
         if ($null -ne $script:token) {
@@ -142,7 +161,12 @@ function Get-TerraformModuleVersion {
                 })
         }
 
-        $result = Invoke-RestMethod @irmArgs
+        try {
+            $result = Invoke-RestMethod @irmArgs
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+
         [pscustomobject] @{
             source = $result.modules.source
             versions = $result.modules.versions.version
@@ -174,6 +198,7 @@ function Get-TerraformModuleDownloadLink {
         $iwrArgs = @{
             Uri = $baseUri
             UseBasicParsing = $true
+            ErrorAction = 'Stop'
         }
 
         if ($null -ne $script:token) {
@@ -182,7 +207,12 @@ function Get-TerraformModuleDownloadLink {
                 })
         }
 
-        $result = Invoke-WebRequest @iwrArgs
+        try {
+            $result = Invoke-WebRequest @iwrArgs
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+
         $result.Headers["X-Terraform-Get"]
     }
 }
